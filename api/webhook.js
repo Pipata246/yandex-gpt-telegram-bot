@@ -13,8 +13,7 @@ const mainMenu = {
   reply_markup: {
     keyboard: [
       ['\uD83D\uDCDD Текстовый помощник', '\u2139\uFE0F Информация'],
-      ['\uD83C\uDFA8 Генерация изображений', '\uD83C\uDFAC Генерация видео'],
-      ['\uD83D\uDDD1\uFE0F Очистить историю']
+      ['\uD83C\uDFA8 Генерация изображений', '\uD83D\uDDD1\uFE0F Очистить историю']
     ],
     resize_keyboard: true
   }
@@ -113,32 +112,6 @@ async function generateImage(prompt) {
     return imageUrl;
   } catch (error) {
     console.error('Image generation error:', error);
-    return null;
-  }
-}
-
-// Генерация видео/GIF через Tenor API (анимированные GIF)
-async function generateVideo(prompt) {
-  try {
-    // Вместо генерации видео с нуля, используем поиск подходящих GIF
-    // Это быстрее и надежнее
-    const searchQuery = encodeURIComponent(prompt);
-    
-    // Используем Giphy API (бесплатный, без ключа для поиска)
-    const response = await axios.get(
-      `https://api.giphy.com/v1/gifs/search?api_key=sXpGFDGZs0Dv1mmNFvYaGUvYwKX0PWIh&q=${searchQuery}&limit=1&rating=g&lang=ru`
-    );
-    
-    if (response.data.data && response.data.data.length > 0) {
-      // Возвращаем URL MP4 версии GIF (лучше для Telegram)
-      return response.data.data[0].images.original.mp4;
-    }
-    
-    // Если не нашли через Giphy, генерируем статичное изображение как fallback
-    const encodedPrompt = encodeURIComponent(prompt);
-    return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&nologo=true`;
-  } catch (error) {
-    console.error('Video generation error:', error);
     return null;
   }
 }
@@ -269,7 +242,6 @@ async function handleMessage(msg) {
       '\uD83E\uDD16 Я AI-помощник на базе Groq AI (Llama 3.3)\n' +
       '\uD83D\uDCDD Могу отвечать на ваши вопросы\n' +
       '\uD83C\uDFA8 Генерирую изображения\n' +
-      '\uD83C\uDFAC Генерирую видео и анимации\n' +
       '\uD83C\uDFA4 Понимаю голосовые сообщения\n' +
       '\uD83D\uDCA1 Помогаю с различными задачами\n\n' +
       '\uD83D\uDCDE *Поддержка:* @NerdIdk',
@@ -289,28 +261,11 @@ async function handleMessage(msg) {
       '\uD83D\uDCDD Для выхода нажмите "\uD83D\uDCDD Текстовый помощник"',
       { parse_mode: 'Markdown', ...mainMenu }
     );
-  } else if (text === '\uD83C\uDFAC Генерация видео') {
-    userModes.set(userId, 'video');
-    await bot.sendMessage(
-      chatId,
-      '\u2705 Режим генерации видео активирован!\n\n' +
-      '\uD83C\uDFAC Теперь опишите, какое видео вы хотите найти.\n\n' +
-      'Примеры:\n' +
-      '\u2022 "Волны на океане"\n' +
-      '\u2022 "Летящая птица"\n' +
-      '\u2022 "Горящий костер"\n' +
-      '\u2022 "Танцующий кот"\n\n' +
-      '\u26A1 Поиск видео занимает 2-5 секунд.\n' +
-      '\uD83D\uDCA1 Каждое ваше сообщение будет искать новое видео.\n' +
-      '\uD83D\uDCDD Для выхода нажмите "\uD83D\uDCDD Текстовый помощник"',
-      { parse_mode: 'Markdown', ...mainMenu }
-    );
   } else if (text === '\uD83D\uDDD1\uFE0F Очистить историю') {
     await clearMessageHistory(userId);
     const currentMode = userModes.get(userId);
     const modeText = currentMode === 'text' ? '\uD83D\uDCDD Текстовый помощник' : 
-                     currentMode === 'image' ? '\uD83C\uDFA8 Генерация изображений' : 
-                     currentMode === 'video' ? '\uD83C\uDFAC Генерация видео' : null;
+                     currentMode === 'image' ? '\uD83C\uDFA8 Генерация изображений' : null;
     
     await bot.sendMessage(
       chatId,
@@ -329,8 +284,7 @@ async function handleMessage(msg) {
         chatId,
         '\u26A0\uFE0F Пожалуйста, выберите режим работы из меню ниже:\n\n' +
         '\uD83D\uDCDD Текстовый помощник - для вопросов и ответов\n' +
-        '\uD83C\uDFA8 Генерация изображений - для создания картинок\n' +
-        '\uD83C\uDFAC Генерация видео - для создания коротких видео',
+        '\uD83C\uDFA8 Генерация изображений - для создания картинок',
         mainMenu
       );
     } else if (mode === 'image') {
@@ -345,27 +299,6 @@ async function handleMessage(msg) {
         });
       } else {
         await bot.sendMessage(chatId, '\u274C Ошибка при генерации изображения. Попробуйте еще раз.', mainMenu);
-      }
-    } else if (mode === 'video') {
-      // Режим генерации видео
-      await bot.sendMessage(chatId, '\uD83C\uDFAC Ищу подходящее видео...');
-      
-      const videoUrl = await generateVideo(text);
-      if (videoUrl) {
-        try {
-          await bot.sendVideo(chatId, videoUrl, { 
-            caption: `\uD83C\uDFAC "${text}"`,
-            ...mainMenu 
-          });
-        } catch (err) {
-          // Если не удалось отправить как видео, пробуем как анимацию
-          await bot.sendAnimation(chatId, videoUrl, { 
-            caption: `\uD83C\uDFAC "${text}"`,
-            ...mainMenu 
-          });
-        }
-      } else {
-        await bot.sendMessage(chatId, '\u274C Не удалось найти подходящее видео. Попробуйте другое описание.', mainMenu);
       }
     } else if (mode === 'text') {
       // Режим текстового помощника
@@ -395,8 +328,7 @@ async function handleVoice(msg) {
         chatId,
         '\u26A0\uFE0F Пожалуйста, сначала выберите режим работы из меню ниже:\n\n' +
         '\uD83D\uDCDD Текстовый помощник - для вопросов и ответов\n' +
-        '\uD83C\uDFA8 Генерация изображений - для создания картинок\n' +
-        '\uD83C\uDFAC Генерация видео - для создания коротких видео',
+        '\uD83C\uDFA8 Генерация изображений - для создания картинок',
         mainMenu
       );
       return;
@@ -426,26 +358,6 @@ async function handleVoice(msg) {
           });
         } else {
           await bot.sendMessage(chatId, '\u274C Ошибка при генерации изображения. Попробуйте еще раз.', mainMenu);
-        }
-      } else if (mode === 'video') {
-        // Режим генерации видео
-        await bot.sendMessage(chatId, '\uD83C\uDFAC Ищу подходящее видео...');
-        
-        const videoUrl = await generateVideo(transcription);
-        if (videoUrl) {
-          try {
-            await bot.sendVideo(chatId, videoUrl, { 
-              caption: `\uD83C\uDFAC "${transcription}"`,
-              ...mainMenu 
-            });
-          } catch (err) {
-            await bot.sendAnimation(chatId, videoUrl, { 
-              caption: `\uD83C\uDFAC "${transcription}"`,
-              ...mainMenu 
-            });
-          }
-        } else {
-          await bot.sendMessage(chatId, '\u274C Не удалось найти подходящее видео. Попробуйте другое описание.', mainMenu);
         }
       } else if (mode === 'text') {
         // Режим текстового помощника
