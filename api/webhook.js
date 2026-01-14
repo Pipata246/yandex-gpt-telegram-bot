@@ -5,6 +5,9 @@ import axios from 'axios';
 const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
+// Хранилище режимов пользователей (в памяти)
+const userModes = new Map();
+
 // Главное меню с кнопками
 const mainMenu = {
   reply_markup: {
@@ -224,6 +227,7 @@ async function handleMessage(msg) {
   await updateUserActivity(userId);
 
   if (text === '📝 Текстовый помощник') {
+    userModes.set(userId, 'text');
     await bot.sendMessage(
       chatId,
       '💬 Режим текстового помощника активирован!\n\n' +
@@ -243,6 +247,7 @@ async function handleMessage(msg) {
       { parse_mode: 'Markdown', ...mainMenu }
     );
   } else if (text === '🎨 Генерация изображений') {
+    userModes.set(userId, 'image');
     await bot.sendMessage(
       chatId,
       '🎨 *Режим генерации изображений активирован!*\n\n' +
@@ -250,11 +255,13 @@ async function handleMessage(msg) {
       'Например:\n' +
       '• "Кот в космосе"\n' +
       '• "Закат на море"\n' +
-      '• "Футуристический город"',
+      '• "Футуристический город"\n\n' +
+      'Для выхода из режима нажмите "📝 Текстовый помощник"',
       { parse_mode: 'Markdown', ...mainMenu }
     );
   } else if (text === '🗑️ Очистить историю') {
     await clearMessageHistory(userId);
+    userModes.delete(userId);
     await bot.sendMessage(
       chatId,
       '✅ История сообщений очищена!\n\n' +
@@ -268,25 +275,30 @@ async function handleMessage(msg) {
       'Скоро здесь появится возможность отключить рекламу!',
       mainMenu
     );
-  } else if (text && text.startsWith('/img ')) {
-    // Генерация изображения по команде /img
-    const prompt = text.substring(5).trim();
-    await bot.sendMessage(chatId, '🎨 Генерирую изображение...');
-    
-    const imageUrl = await generateImage(prompt);
-    if (imageUrl) {
-      await bot.sendPhoto(chatId, imageUrl, { 
-        caption: `🎨 Изображение: "${prompt}"`,
-        ...mainMenu 
-      });
-    } else {
-      await bot.sendMessage(chatId, '❌ Ошибка при генерации изображения. Попробуйте еще раз.', mainMenu);
-    }
   } else {
-    await bot.sendMessage(chatId, '⏳ Обрабатываю ваш запрос...');
+    // Проверяем режим пользователя
+    const mode = userModes.get(userId) || 'text';
     
-    const answer = await askGroqAI(userId, text);
-    await bot.sendMessage(chatId, answer, mainMenu);
+    if (mode === 'image') {
+      // Режим генерации изображений
+      await bot.sendMessage(chatId, '🎨 Генерирую изображение...');
+      
+      const imageUrl = await generateImage(text);
+      if (imageUrl) {
+        await bot.sendPhoto(chatId, imageUrl, { 
+          caption: `🎨 "${text}"`,
+          ...mainMenu 
+        });
+      } else {
+        await bot.sendMessage(chatId, '❌ Ошибка при генерации изображения. Попробуйте еще раз.', mainMenu);
+      }
+    } else {
+      // Режим текстового помощника (по умолчанию)
+      await bot.sendMessage(chatId, '⏳ Обрабатываю ваш запрос...');
+      
+      const answer = await askGroqAI(userId, text);
+      await bot.sendMessage(chatId, answer, mainMenu);
+    }
   }
 }
 
