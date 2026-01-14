@@ -1,11 +1,8 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { createClient } from '@supabase/supabase-js';
 import axios from 'axios';
-import dotenv from 'dotenv';
 
-dotenv.config();
-
-const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
+const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
 // Главное меню с кнопками
@@ -90,40 +87,35 @@ async function askYandexGPT(question) {
   }
 }
 
-// Команда /start
-bot.onText(/\/start/, async (msg) => {
-  const chatId = msg.chat.id;
-  const user = msg.from;
-  
-  await registerUser(user.id, user.username, user.first_name, user.last_name);
-  
-  bot.sendMessage(
-    chatId,
-    '👋 Добро пожаловать! Я AI-помощник на базе Yandex GPT.\n\n' +
-    'Выберите действие из меню ниже:',
-    mainMenu
-  );
-});
-
-// Обработка кнопок меню
-bot.on('message', async (msg) => {
+// Обработка сообщений
+async function handleMessage(msg) {
   const chatId = msg.chat.id;
   const text = msg.text;
   const userId = msg.from.id;
 
-  if (text === '/start') return;
+  if (text === '/start') {
+    await registerUser(userId, msg.from.username, msg.from.first_name, msg.from.last_name);
+    
+    await bot.sendMessage(
+      chatId,
+      '👋 Добро пожаловать! Я AI-помощник на базе Yandex GPT.\n\n' +
+      'Выберите действие из меню ниже:',
+      mainMenu
+    );
+    return;
+  }
 
   await updateUserActivity(userId);
 
   if (text === '📝 Текстовый помощник') {
-    bot.sendMessage(
+    await bot.sendMessage(
       chatId,
       '💬 Режим текстового помощника активирован!\n\n' +
       'Задайте мне любой вопрос, и я постараюсь на него ответить.',
       mainMenu
     );
   } else if (text === 'ℹ️ Информация') {
-    bot.sendMessage(
+    await bot.sendMessage(
       chatId,
       'ℹ️ *Информация о боте*\n\n' +
       '🤖 Я AI-помощник на базе Yandex GPT\n' +
@@ -133,19 +125,36 @@ bot.on('message', async (msg) => {
       { parse_mode: 'Markdown', ...mainMenu }
     );
   } else if (text === '🚫 Отключить рекламу') {
-    bot.sendMessage(
+    await bot.sendMessage(
       chatId,
       '🚧 Эта функция находится в разработке.\n\n' +
       'Скоро здесь появится возможность отключить рекламу!',
       mainMenu
     );
   } else {
-    // Обработка обычных текстовых сообщений как вопросов к GPT
-    bot.sendMessage(chatId, '⏳ Обрабатываю ваш запрос...');
+    await bot.sendMessage(chatId, '⏳ Обрабатываю ваш запрос...');
     
     const answer = await askYandexGPT(text);
-    bot.sendMessage(chatId, answer, mainMenu);
+    await bot.sendMessage(chatId, answer, mainMenu);
   }
-});
+}
 
-console.log('🤖 Бот запущен!');
+// Webhook handler для Vercel
+export default async function handler(req, res) {
+  if (req.method === 'POST') {
+    try {
+      const { body } = req;
+      
+      if (body.message) {
+        await handleMessage(body.message);
+      }
+      
+      res.status(200).json({ ok: true });
+    } catch (error) {
+      console.error('Error:', error);
+      res.status(200).json({ ok: true });
+    }
+  } else {
+    res.status(200).json({ status: 'Bot is running' });
+  }
+}
