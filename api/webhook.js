@@ -319,7 +319,14 @@ async function handleMessage(msg) {
       (modeText ? `Текущий режим: ${modeText}` : '⚠️ Выберите режим работы'),
       mainMenu
     );
-    } else {
+  } else if (text === '🚫 Отключить рекламу') {
+    await bot.sendMessage(
+      chatId,
+      '🚧 Эта функция находится в разработке.\n\n' +
+      'Скоро здесь появится возможность отключить рекламу!',
+      mainMenu
+    );
+  } else {
     // Проверяем режим пользователя
     const mode = userModes.get(userId);
     
@@ -343,7 +350,7 @@ async function handleMessage(msg) {
           caption: `🎨 "${text}"`,
           ...mainMenu 
         });
-      }  } else {
+      } else {
         await bot.sendMessage(chatId, '❌ Ошибка при генерации изображения. Попробуйте еще раз.', mainMenu);
       }
     } else if (mode === 'video') {
@@ -364,7 +371,7 @@ async function handleMessage(msg) {
             ...mainMenu 
           });
         }
-      }  } else {
+      } else {
         await bot.sendMessage(chatId, '❌ Не удалось найти подходящее видео. Попробуйте другое описание.', mainMenu);
       }
     } else if (mode === 'text') {
@@ -424,7 +431,7 @@ async function handleVoice(msg) {
             caption: `🎨 "${transcription}"`,
             ...mainMenu 
           });
-        }  } else {
+        } else {
           await bot.sendMessage(chatId, '❌ Ошибка при генерации изображения. Попробуйте еще раз.', mainMenu);
         }
       } else if (mode === 'video') {
@@ -444,7 +451,7 @@ async function handleVoice(msg) {
               ...mainMenu 
             });
           }
-        }  } else {
+        } else {
           await bot.sendMessage(chatId, '❌ Не удалось найти подходящее видео. Попробуйте другое описание.', mainMenu);
         }
       } else if (mode === 'text') {
@@ -454,7 +461,7 @@ async function handleVoice(msg) {
         const answer = await askGroqAI(userId, transcription);
         await bot.sendMessage(chatId, answer, mainMenu);
       }
-    }  } else {
+    } else {
       await bot.sendMessage(chatId, '❌ Не удалось распознать голосовое сообщение. Попробуйте еще раз.', mainMenu);
     }
   } catch (error) {
@@ -483,7 +490,7 @@ export default async function handler(req, res) {
       console.error('Error:', error);
       res.status(200).json({ ok: true });
     }
-  }  } else {
+  } else {
     res.status(200).json({ status: 'Bot is running' });
   }
 }
