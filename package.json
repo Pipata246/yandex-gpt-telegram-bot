@@ -1,0 +1,20 @@
+{
+  "name": "yandex-gpt-telegram-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot with Yandex GPT integration",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "keywords": ["telegram", "bot", "yandex-gpt"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "node-telegram-bot-api": "^0.66.0",
+    "@supabase/supabase-js": "^2.39.0",
+    "axios": "^1.6.5",
+    "dotenv": "^16.3.1"
+  }
+}
