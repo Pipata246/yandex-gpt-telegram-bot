@@ -323,6 +323,22 @@ async function handleVoice(msg) {
   
   try {
     await updateUserActivity(userId);
+    
+    // Проверяем режим пользователя
+    const mode = userModes.get(userId);
+    
+    if (!mode) {
+      // Режим не выбран
+      await bot.sendMessage(
+        chatId,
+        '⚠️ Пожалуйста, сначала выберите режим работы из меню ниже:\n\n' +
+        '📝 Текстовый помощник - для вопросов и ответов\n' +
+        '🎨 Генерация изображений - для создания картинок',
+        mainMenu
+      );
+      return;
+    }
+    
     await bot.sendMessage(chatId, '🎤 Обрабатываю голосовое сообщение...');
     
     // Получаем ссылку на файл
@@ -333,11 +349,28 @@ async function handleVoice(msg) {
     const transcription = await transcribeVoice(fileUrl);
     
     if (transcription) {
-      await bot.sendMessage(chatId, `📝 Вы сказали: "${transcription}"\n\n⏳ Обрабатываю...`);
+      await bot.sendMessage(chatId, `📝 Вы сказали: "${transcription}"`);
       
-      // Отвечаем на транскрибированный текст
-      const answer = await askGroqAI(userId, transcription);
-      await bot.sendMessage(chatId, answer, mainMenu);
+      if (mode === 'image') {
+        // Режим генерации изображений
+        await bot.sendMessage(chatId, '🎨 Генерирую изображение...');
+        
+        const imageUrl = await generateImage(transcription);
+        if (imageUrl) {
+          await bot.sendPhoto(chatId, imageUrl, { 
+            caption: `🎨 "${transcription}"`,
+            ...mainMenu 
+          });
+        } else {
+          await bot.sendMessage(chatId, '❌ Ошибка при генерации изображения. Попробуйте еще раз.', mainMenu);
+        }
+      } else if (mode === 'text') {
+        // Режим текстового помощника
+        await bot.sendMessage(chatId, '⏳ Обрабатываю ваш запрос...');
+        
+        const answer = await askGroqAI(userId, transcription);
+        await bot.sendMessage(chatId, answer, mainMenu);
+      }
     } else {
       await bot.sendMessage(chatId, '❌ Не удалось распознать голосовое сообщение. Попробуйте еще раз.', mainMenu);
     }
