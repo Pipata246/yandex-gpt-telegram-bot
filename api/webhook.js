@@ -117,18 +117,26 @@ async function generateImage(prompt) {
   }
 }
 
-// Генерация видео через Pollinations AI
+// Генерация видео/GIF через Tenor API (анимированные GIF)
 async function generateVideo(prompt) {
   try {
-    // Pollinations AI также поддерживает генерацию видео
+    // Вместо генерации видео с нуля, используем поиск подходящих GIF
+    // Это быстрее и надежнее
+    const searchQuery = encodeURIComponent(prompt);
+    
+    // Используем Giphy API (бесплатный, без ключа для поиска)
+    const response = await axios.get(
+      `https://api.giphy.com/v1/gifs/search?api_key=sXpGFDGZs0Dv1mmNFvYaGUvYwKX0PWIh&q=${searchQuery}&limit=1&rating=g&lang=ru`
+    );
+    
+    if (response.data.data && response.data.data.length > 0) {
+      // Возвращаем URL MP4 версии GIF (лучше для Telegram)
+      return response.data.data[0].images.original.mp4;
+    }
+    
+    // Если не нашли через Giphy, генерируем статичное изображение как fallback
     const encodedPrompt = encodeURIComponent(prompt);
-    const videoUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&nologo=true&model=flux&enhance=true`;
-    
-    // Для видео используем другой подход - генерируем GIF анимацию
-    // Это быстрее и работает стабильнее
-    const gifUrl = `https://pollinations.ai/p/${encodedPrompt}?width=512&height=512&model=flux&seed=${Date.now()}`;
-    
-    return gifUrl;
+    return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&nologo=true`;
   } catch (error) {
     console.error('Video generation error:', error);
     return null;
@@ -286,13 +294,14 @@ async function handleMessage(msg) {
     await bot.sendMessage(
       chatId,
       '✅ Режим генерации видео активирован!\n\n' +
-      '🎬 Теперь опишите, какое видео вы хотите создать.\n\n' +
+      '🎬 Теперь опишите, какое видео вы хотите найти.\n\n' +
       'Примеры:\n' +
       '• "Волны на океане"\n' +
       '• "Летящая птица"\n' +
-      '• "Горящий костер"\n\n' +
-      '⚠️ Генерация видео занимает 30-60 секунд.\n' +
-      '💡 Каждое ваше сообщение будет генерировать новое видео.\n' +
+      '• "Горящий костер"\n' +
+      '• "Танцующий кот"\n\n' +
+      '⚡ Поиск видео занимает 2-5 секунд.\n' +
+      '�  Каждое ваше сообщение будет искать новое видео.\n' +
       '📝 Для выхода нажмите "Текстовый помощник"',
       { parse_mode: 'Markdown', ...mainMenu }
     );
@@ -346,16 +355,24 @@ async function handleMessage(msg) {
       }
     } else if (mode === 'video') {
       // Режим генерации видео
-      await bot.sendMessage(chatId, '🎬 Генерирую видео... Это займет 30-60 секунд, пожалуйста подождите.');
+      await bot.sendMessage(chatId, '🎬 Ищу подходящее видео...');
       
       const videoUrl = await generateVideo(text);
       if (videoUrl) {
-        await bot.sendVideo(chatId, videoUrl, { 
-          caption: `🎬 "${text}"`,
-          ...mainMenu 
-        });
+        try {
+          await bot.sendVideo(chatId, videoUrl, { 
+            caption: `🎬 "${text}"`,
+            ...mainMenu 
+          });
+        } catch (err) {
+          // Если не удалось отправить как видео, пробуем как анимацию
+          await bot.sendAnimation(chatId, videoUrl, { 
+            caption: `🎬 "${text}"`,
+            ...mainMenu 
+          });
+        }
       } else {
-        await bot.sendMessage(chatId, '❌ Ошибка при генерации видео. Попробуйте еще раз или упростите описание.', mainMenu);
+        await bot.sendMessage(chatId, '❌ Не удалось найти подходящее видео. Попробуйте другое описание.', mainMenu);
       }
     } else if (mode === 'text') {
       // Режим текстового помощника
@@ -419,16 +436,23 @@ async function handleVoice(msg) {
         }
       } else if (mode === 'video') {
         // Режим генерации видео
-        await bot.sendMessage(chatId, '🎬 Генерирую видео... Это займет 30-60 секунд, пожалуйста подождите.');
+        await bot.sendMessage(chatId, '🎬 Ищу подходящее видео...');
         
         const videoUrl = await generateVideo(transcription);
         if (videoUrl) {
-          await bot.sendVideo(chatId, videoUrl, { 
-            caption: `🎬 "${transcription}"`,
-            ...mainMenu 
-          });
+          try {
+            await bot.sendVideo(chatId, videoUrl, { 
+              caption: `🎬 "${transcription}"`,
+              ...mainMenu 
+            });
+          } catch (err) {
+            await bot.sendAnimation(chatId, videoUrl, { 
+              caption: `🎬 "${transcription}"`,
+              ...mainMenu 
+            });
+          }
         } else {
-          await bot.sendMessage(chatId, '❌ Ошибка при генерации видео. Попробуйте еще раз.', mainMenu);
+          await bot.sendMessage(chatId, '❌ Не удалось найти подходящее видео. Попробуйте другое описание.', mainMenu);
         }
       } else if (mode === 'text') {
         // Режим текстового помощника
