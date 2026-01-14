@@ -49,40 +49,37 @@ async function updateUserActivity(userId) {
   }
 }
 
-// Запрос к Yandex GPT
-async function askYandexGPT(question) {
+// Запрос к Groq AI
+async function askGroqAI(question) {
   try {
     const response = await axios.post(
-      'https://llm.api.cloud.yandex.net/foundationModels/v1/completion',
+      'https://api.groq.com/openai/v1/chat/completions',
       {
-        modelUri: `gpt://${process.env.YANDEX_FOLDER_ID}/yandexgpt-lite`,
-        completionOptions: {
-          stream: false,
-          temperature: 0.6,
-          maxTokens: 2000
-        },
+        model: 'llama-3.3-70b-versatile',
         messages: [
           {
             role: 'system',
-            text: 'Ты полезный AI-помощник. Отвечай кратко и по делу.'
+            content: 'Ты полезный AI-помощник. Отвечай кратко и по делу на русском языке.'
           },
           {
             role: 'user',
-            text: question
+            content: question
           }
-        ]
+        ],
+        temperature: 0.7,
+        max_tokens: 2000
       },
       {
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Api-Key ${process.env.YANDEX_API_KEY}`
+          'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
         }
       }
     );
 
-    return response.data.result.alternatives[0].message.text;
+    return response.data.choices[0].message.content;
   } catch (error) {
-    console.error('Yandex GPT error:', error.response?.data || error.message);
+    console.error('Groq AI error:', error.response?.data || error.message);
     return 'Извините, произошла ошибка при обработке запроса. Попробуйте позже.';
   }
 }
@@ -98,7 +95,7 @@ async function handleMessage(msg) {
     
     await bot.sendMessage(
       chatId,
-      '👋 Добро пожаловать! Я AI-помощник на базе Yandex GPT.\n\n' +
+      '👋 Добро пожаловать! Я AI-помощник на базе Groq AI.\n\n' +
       'Выберите действие из меню ниже:',
       mainMenu
     );
@@ -118,7 +115,7 @@ async function handleMessage(msg) {
     await bot.sendMessage(
       chatId,
       'ℹ️ *Информация о боте*\n\n' +
-      '🤖 Я AI-помощник на базе Yandex GPT\n' +
+      '🤖 Я AI-помощник на базе Groq AI (Llama 3.3)\n' +
       '📝 Могу отвечать на ваши вопросы\n' +
       '💡 Помогаю с различными задачами\n\n' +
       '📞 *Поддержка:* @NerdIdk',
@@ -134,7 +131,7 @@ async function handleMessage(msg) {
   } else {
     await bot.sendMessage(chatId, '⏳ Обрабатываю ваш запрос...');
     
-    const answer = await askYandexGPT(text);
+    const answer = await askGroqAI(text);
     await bot.sendMessage(chatId, answer, mainMenu);
   }
 }
