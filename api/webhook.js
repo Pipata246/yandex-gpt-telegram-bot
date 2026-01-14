@@ -10,7 +10,7 @@ const mainMenu = {
   reply_markup: {
     keyboard: [
       ['📝 Текстовый помощник', 'ℹ️ Информация'],
-      ['🚫 Отключить рекламу']
+      ['🗑️ Очистить историю', '🚫 Отключить рекламу']
     ],
     resize_keyboard: true
   }
@@ -49,23 +49,89 @@ async function updateUserActivity(userId) {
   }
 }
 
-// Запрос к Groq AI
-async function askGroqAI(question) {
+// Получение истории сообщений пользователя
+async function getMessageHistory(userId, limit = 10) {
   try {
+    const { data, error } = await supabase
+      .from('messages')
+      .select('role, content')
+      .eq('telegram_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    
+    if (error) {
+      console.error('Error getting message history:', error);
+      return [];
+    }
+    
+    // Возвращаем в правильном порядке (от старых к новым)
+    return data ? data.reverse() : [];
+  } catch (err) {
+    console.error('Error getting message history:', err);
+    return [];
+  }
+}
+
+// Сохранение сообщения в историю
+async function saveMessage(userId, role, content) {
+  try {
+    await supabase
+      .from('messages')
+      .insert({
+        telegram_id: userId,
+        role: role,
+        content: content
+      });
+  } catch (err) {
+    console.error('Error saving message:', err);
+  }
+}
+
+// Очистка истории сообщений пользователя
+async function clearMessageHistory(userId) {
+  try {
+    await supabase
+      .from('messages')
+      .delete()
+      .eq('telegram_id', userId);
+  } catch (err) {
+    console.error('Error clearing message history:', err);
+  }
+}
+
+// Запрос к Groq AI с историей сообщений
+async function askGroqAI(userId, question) {
+  try {
+    // Получаем историю последних 10 сообщений
+    const history = await getMessageHistory(userId, 10);
+    
+    // Формируем массив сообщений для API
+    const messages = [
+      {
+        role: 'system',
+        content: 'Ты полезный AI-помощник. Отвечай кратко и по делу на русском языке. Ты помнишь предыдущие сообщения в разговоре.'
+      }
+    ];
+    
+    // Добавляем историю
+    history.forEach(msg => {
+      messages.push({
+        role: msg.role,
+        content: msg.content
+      });
+    });
+    
+    // Добавляем текущий вопрос
+    messages.push({
+      role: 'user',
+      content: question
+    });
+
     const response = await axios.post(
       'https://api.groq.com/openai/v1/chat/completions',
       {
         model: 'llama-3.3-70b-versatile',
-        messages: [
-          {
-            role: 'system',
-            content: 'Ты полезный AI-помощник. Отвечай кратко и по делу на русском языке.'
-          },
-          {
-            role: 'user',
-            content: question
-          }
-        ],
+        messages: messages,
         temperature: 0.7,
         max_tokens: 2000
       },
@@ -77,7 +143,13 @@ async function askGroqAI(question) {
       }
     );
 
-    return response.data.choices[0].message.content;
+    const answer = response.data.choices[0].message.content;
+    
+    // Сохраняем вопрос и ответ в историю
+    await saveMessage(userId, 'user', question);
+    await saveMessage(userId, 'assistant', answer);
+    
+    return answer;
   } catch (error) {
     console.error('Groq AI error:', error.response?.data || error.message);
     return 'Извините, произошла ошибка при обработке запроса. Попробуйте позже.';
@@ -121,6 +193,14 @@ async function handleMessage(msg) {
       '📞 *Поддержка:* @NerdIdk',
       { parse_mode: 'Markdown', ...mainMenu }
     );
+  } else if (text === '🗑️ Очистить историю') {
+    await clearMessageHistory(userId);
+    await bot.sendMessage(
+      chatId,
+      '✅ История сообщений очищена!\n\n' +
+      'Теперь я начну новый разговор с чистого листа.',
+      mainMenu
+    );
   } else if (text === '🚫 Отключить рекламу') {
     await bot.sendMessage(
       chatId,
@@ -131,7 +211,7 @@ async function handleMessage(msg) {
   } else {
     await bot.sendMessage(chatId, '⏳ Обрабатываю ваш запрос...');
     
-    const answer = await askGroqAI(text);
+    const answer = await askGroqAI(userId, text);
     await bot.sendMessage(chatId, answer, mainMenu);
   }
 }
