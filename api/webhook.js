@@ -10,7 +10,8 @@ const mainMenu = {
   reply_markup: {
     keyboard: [
       ['📝 Текстовый помощник', 'ℹ️ Информация'],
-      ['🗑️ Очистить историю', '🚫 Отключить рекламу']
+      ['🎨 Генерация изображений', '🗑️ Очистить историю'],
+      ['🚫 Отключить рекламу']
     ],
     resize_keyboard: true
   }
@@ -96,6 +97,52 @@ async function clearMessageHistory(userId) {
       .eq('telegram_id', userId);
   } catch (err) {
     console.error('Error clearing message history:', err);
+  }
+}
+
+// Генерация изображения через Pollinations AI
+async function generateImage(prompt) {
+  try {
+    // Pollinations AI - бесплатный API для генерации изображений
+    const encodedPrompt = encodeURIComponent(prompt);
+    const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true`;
+    
+    return imageUrl;
+  } catch (error) {
+    console.error('Image generation error:', error);
+    return null;
+  }
+}
+
+// Транскрибация голосового сообщения через Groq Whisper
+async function transcribeVoice(fileUrl) {
+  try {
+    // Скачиваем аудио файл
+    const audioResponse = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+    const audioBuffer = Buffer.from(audioResponse.data);
+    
+    // Отправляем в Groq Whisper API
+    const FormData = (await import('form-data')).default;
+    const formData = new FormData();
+    formData.append('file', audioBuffer, { filename: 'audio.ogg', contentType: 'audio/ogg' });
+    formData.append('model', 'whisper-large-v3');
+    formData.append('language', 'ru');
+    
+    const response = await axios.post(
+      'https://api.groq.com/openai/v1/audio/transcriptions',
+      formData,
+      {
+        headers: {
+          ...formData.getHeaders(),
+          'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
+        }
+      }
+    );
+    
+    return response.data.text;
+  } catch (error) {
+    console.error('Voice transcription error:', error.response?.data || error.message);
+    return null;
   }
 }
 
@@ -189,8 +236,21 @@ async function handleMessage(msg) {
       'ℹ️ *Информация о боте*\n\n' +
       '🤖 Я AI-помощник на базе Groq AI (Llama 3.3)\n' +
       '📝 Могу отвечать на ваши вопросы\n' +
+      '🎨 Генерирую изображения\n' +
+      '🎤 Понимаю голосовые сообщения\n' +
       '💡 Помогаю с различными задачами\n\n' +
       '📞 *Поддержка:* @NerdIdk',
+      { parse_mode: 'Markdown', ...mainMenu }
+    );
+  } else if (text === '🎨 Генерация изображений') {
+    await bot.sendMessage(
+      chatId,
+      '🎨 *Режим генерации изображений активирован!*\n\n' +
+      'Опишите, какое изображение вы хотите создать.\n\n' +
+      'Например:\n' +
+      '• "Кот в космосе"\n' +
+      '• "Закат на море"\n' +
+      '• "Футуристический город"',
       { parse_mode: 'Markdown', ...mainMenu }
     );
   } else if (text === '🗑️ Очистить историю') {
@@ -208,11 +268,57 @@ async function handleMessage(msg) {
       'Скоро здесь появится возможность отключить рекламу!',
       mainMenu
     );
+  } else if (text && text.startsWith('/img ')) {
+    // Генерация изображения по команде /img
+    const prompt = text.substring(5).trim();
+    await bot.sendMessage(chatId, '🎨 Генерирую изображение...');
+    
+    const imageUrl = await generateImage(prompt);
+    if (imageUrl) {
+      await bot.sendPhoto(chatId, imageUrl, { 
+        caption: `🎨 Изображение: "${prompt}"`,
+        ...mainMenu 
+      });
+    } else {
+      await bot.sendMessage(chatId, '❌ Ошибка при генерации изображения. Попробуйте еще раз.', mainMenu);
+    }
   } else {
     await bot.sendMessage(chatId, '⏳ Обрабатываю ваш запрос...');
     
     const answer = await askGroqAI(userId, text);
     await bot.sendMessage(chatId, answer, mainMenu);
+  }
+}
+
+// Обработка голосовых сообщений
+async function handleVoice(msg) {
+  const chatId = msg.chat.id;
+  const userId = msg.from.id;
+  const voice = msg.voice;
+  
+  try {
+    await updateUserActivity(userId);
+    await bot.sendMessage(chatId, '🎤 Обрабатываю голосовое сообщение...');
+    
+    // Получаем ссылку на файл
+    const fileInfo = await bot.getFile(voice.file_id);
+    const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${fileInfo.file_path}`;
+    
+    // Транскрибируем голос
+    const transcription = await transcribeVoice(fileUrl);
+    
+    if (transcription) {
+      await bot.sendMessage(chatId, `📝 Вы сказали: "${transcription}"\n\n⏳ Обрабатываю...`);
+      
+      // Отвечаем на транскрибированный текст
+      const answer = await askGroqAI(userId, transcription);
+      await bot.sendMessage(chatId, answer, mainMenu);
+    } else {
+      await bot.sendMessage(chatId, '❌ Не удалось распознать голосовое сообщение. Попробуйте еще раз.', mainMenu);
+    }
+  } catch (error) {
+    console.error('Voice handling error:', error);
+    await bot.sendMessage(chatId, '❌ Ошибка при обработке голосового сообщения.', mainMenu);
   }
 }
 
@@ -223,7 +329,12 @@ export default async function handler(req, res) {
       const { body } = req;
       
       if (body.message) {
-        await handleMessage(body.message);
+        // Проверяем тип сообщения
+        if (body.message.voice) {
+          await handleVoice(body.message);
+        } else if (body.message.text) {
+          await handleMessage(body.message);
+        }
       }
       
       res.status(200).json({ ok: true });
